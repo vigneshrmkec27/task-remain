@@ -13,6 +13,12 @@ const TaskModal = ({ task, onClose, onSuccess, showNotification }) => {
     });
     const [loading, setLoading] = useState(false);
 
+    const normalizeReminderTime = (value) => {
+        if (!value) return '';
+        const normalized = value.replace('Z', '');
+        return normalized.length >= 16 ? normalized.slice(0, 16) : normalized;
+    };
+
     useEffect(() => {
         if (task) {
             setFormData({
@@ -21,7 +27,7 @@ const TaskModal = ({ task, onClose, onSuccess, showNotification }) => {
                 priority: task.priority,
                 status: task.status,
                 dueDate: task.dueDate,
-                reminderTime: task.reminderTime || ''
+                reminderTime: normalizeReminderTime(task.reminderTime)
             });
         }
     }, [task]);
@@ -36,11 +42,15 @@ const TaskModal = ({ task, onClose, onSuccess, showNotification }) => {
 
         setLoading(true);
         try {
+            const payload = {
+                ...formData,
+                reminderTime: formData.reminderTime || null
+            };
             if (task) {
-                await taskService.updateTask(task.id, formData);
+                await taskService.updateTask(task.id, payload);
                 showNotification('Task updated!');
             } else {
-                await taskService.createTask(formData);
+                await taskService.createTask(payload);
                 showNotification('Task created!');
             }
             onSuccess();
