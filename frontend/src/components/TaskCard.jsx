@@ -3,6 +3,15 @@ import { Calendar } from 'lucide-react';
 import { getPriorityColor, getStatusColor, formatDate } from '../utils/helpers';
 
 const TaskCard = ({ task, onClick }) => {
+    if (!task) {
+        return null;
+    }
+
+    const statusLabel = task.status ? task.status.replace('_', ' ') : 'UNKNOWN';
+    const description = task.description || 'No description';
+    const title = task.taskName || 'Untitled task';
+    const priority = task.priority || 'UNKNOWN';
+
     return (
         <div
             onClick={onClick}
@@ -21,15 +30,15 @@ const TaskCard = ({ task, onClick }) => {
             "
         >
             {/* Priority Accent */}
-            <div
-                className={`h-1 ${getPriorityColor(task.priority)} opacity-90`}
-            />
+                <div
+                    className={`h-1 ${getPriorityColor(task.priority)} opacity-90`}
+                />
 
             <div className="p-5 flex flex-col h-full">
                 {/* Title & Status */}
                 <div className="flex items-start justify-between gap-3 mb-3">
                     <h3 className="text-[15px] font-semibold text-gray-900 dark:text-white leading-snug line-clamp-2">
-                        {task.taskName}
+                        {title}
                     </h3>
 
                     <span
@@ -43,13 +52,13 @@ const TaskCard = ({ task, onClick }) => {
                             ${getStatusColor(task.status)}
                         `}
                     >
-                        {task.status.replace('_', ' ')}
+                        {statusLabel}
                     </span>
                 </div>
 
                 {/* Description */}
                 <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed line-clamp-2 mb-4">
-                    {task.description}
+                    {description}
                 </p>
 
                 {/* Footer */}
@@ -70,7 +79,7 @@ const TaskCard = ({ task, onClick }) => {
                             ${getPriorityColor(task.priority)}
                         `}
                     >
-                        {task.priority}
+                        {priority}
                     </div>
                 </div>
             </div>
