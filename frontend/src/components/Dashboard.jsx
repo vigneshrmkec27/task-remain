@@ -30,6 +30,8 @@ const Dashboard = ({ user, darkMode, setDarkMode, showNotification, onUserUpdate
     const [viewMode, setViewMode] = useState('list');
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [calendarMonth, setCalendarMonth] = useState(new Date());
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [chartReady, setChartReady] = useState(false);
 
     const tasksPerPage = 9;
 
@@ -54,7 +56,8 @@ const Dashboard = ({ user, darkMode, setDarkMode, showNotification, onUserUpdate
     }, [showNotification]);
 
     const applyFilters = useCallback(() => {
-        let result = [...tasks];
+        const safeTasks = Array.isArray(tasks) ? tasks : [];
+        let result = [...safeTasks];
 
         if (searchQuery.trim()) {
             result = result.filter(task =>
@@ -70,6 +73,10 @@ const Dashboard = ({ user, darkMode, setDarkMode, showNotification, onUserUpdate
 
     useEffect(() => { fetchTasks(); }, [fetchTasks]);
     useEffect(() => { applyFilters(); }, [applyFilters]);
+    useEffect(() => {
+        const frame = requestAnimationFrame(() => setChartReady(true));
+        return () => cancelAnimationFrame(frame);
+    }, []);
 
     const handleLogout = () => {
         authService.logout();
@@ -110,13 +117,52 @@ const Dashboard = ({ user, darkMode, setDarkMode, showNotification, onUserUpdate
         }
     };
 
+    const handleDownloadReport = async () => {
+        if (isDownloading) return;
+        setIsDownloading(true);
+        try {
+            const response = await taskService.exportTasks();
+            const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            const disposition = response.headers?.['content-disposition'];
+            const match = disposition?.match(/filename="?([^"]+)"?/);
+            link.href = blobUrl;
+            link.download = match?.[1] || 'tasks.csv';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(blobUrl);
+            showNotification('Report downloaded successfully.');
+        } catch {
+            showNotification('Failed to download report', 'error');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
+    const safeTasks = Array.isArray(tasks) ? tasks : [];
+    const safeSelectedDate = selectedDate instanceof Date && !Number.isNaN(selectedDate.valueOf())
+        ? selectedDate
+        : new Date();
     const totalPages = Math.ceil(filteredTasks.length / tasksPerPage);
     const indexOfLastTask = currentPage * tasksPerPage;
     const indexOfFirstTask = indexOfLastTask - tasksPerPage;
     const currentTasks = filteredTasks.slice(indexOfFirstTask, indexOfLastTask);
-    const stats = getTaskStats(tasks);
-    const selectedDateKey = selectedDate.toISOString().split('T')[0];
-    const tasksForSelectedDate = tasks.filter((task) => task.dueDate === selectedDateKey);
+    const stats = getTaskStats(safeTasks);
+    const selectedDateKey = safeSelectedDate.toISOString().split('T')[0];
+    const tasksForSelectedDate = safeTasks.filter((task) => task.dueDate === selectedDateKey);
+    const priorityData = [
+        { label: 'High', value: safeTasks.filter((task) => task.priority === 'HIGH').length, color: 'from-rose-500 to-orange-400' },
+        { label: 'Medium', value: safeTasks.filter((task) => task.priority === 'MEDIUM').length, color: 'from-amber-400 to-yellow-300' },
+        { label: 'Low', value: safeTasks.filter((task) => task.priority === 'LOW').length, color: 'from-emerald-500 to-teal-400' },
+    ];
+    const statusData = [
+        { label: 'Pending', value: safeTasks.filter((task) => task.status === 'PENDING').length, color: 'from-slate-500 to-slate-400' },
+        { label: 'In Progress', value: safeTasks.filter((task) => task.status === 'IN_PROGRESS').length, color: 'from-sky-500 to-indigo-400' },
+        { label: 'Completed', value: safeTasks.filter((task) => task.status === 'COMPLETED').length, color: 'from-emerald-500 to-lime-400' },
+    ];
+    const maxPriority = Math.max(...priorityData.map((item) => item.value), 1);
+    const maxStatus = Math.max(...statusData.map((item) => item.value), 1);
 
     return (
         <div className={`min-h-screen transition-colors duration-300 ${
@@ -133,7 +179,7 @@ const Dashboard = ({ user, darkMode, setDarkMode, showNotification, onUserUpdate
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={() => setShowProfilePanel(true)}
-                                className="flex items-center justify-center h-12 w-12 rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/80 dark:bg-white/10 shadow-sm hover:shadow-md"
+                                className="flex items-center justify-center h-12 w-12 rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/80 dark:bg-white/10 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
                                 aria-label="Open profile settings"
                             >
                                 {user?.profileImage ? (
@@ -146,7 +192,7 @@ const Dashboard = ({ user, darkMode, setDarkMode, showNotification, onUserUpdate
                                     <UserCircle className="w-7 h-7 text-indigo-500" />
                                 )}
                             </button>
-                            <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg">
+                            <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg animate-[pulse_6s_ease-in-out_infinite]">
                                 <Check className="w-7 h-7 text-white" />
                             </div>
                             <div>
@@ -218,9 +264,11 @@ const Dashboard = ({ user, darkMode, setDarkMode, showNotification, onUserUpdate
                         </button>
 
                         <button
-                            className="px-6 py-3 rounded-xl border border-gray-300 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/10 transition flex items-center gap-2"
+                            onClick={handleDownloadReport}
+                            disabled={isDownloading}
+                            className="px-6 py-3 rounded-xl border border-gray-300 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/10 transition flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed hover:-translate-y-0.5"
                         >
-                            <Calendar className="w-5 h-5" /> Download Report
+                            <Calendar className={`w-5 h-5 ${isDownloading ? 'animate-spin' : ''}`} /> {isDownloading ? 'Downloading...' : 'Download Report'}
                         </button>
                     </div>
                 </div>
@@ -236,7 +284,7 @@ const Dashboard = ({ user, darkMode, setDarkMode, showNotification, onUserUpdate
                     ].map((card) => (
                         <div
                             key={card.label}
-                            className="p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/80 dark:bg-gray-900/60 shadow-lg"
+                            className="p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/80 dark:bg-gray-900/60 shadow-lg transition hover:-translate-y-1 hover:shadow-xl"
                         >
                             <p className="text-sm text-gray-500 dark:text-gray-400">{card.label}</p>
                             <div className="mt-4 flex items-center justify-between">
@@ -245,6 +293,60 @@ const Dashboard = ({ user, darkMode, setDarkMode, showNotification, onUserUpdate
                             </div>
                         </div>
                     ))}
+                </section>
+
+                <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
+                    <div className="p-6 rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/80 dark:bg-gray-900/60 shadow-lg">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Priority Mix</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">How tasks are distributed by priority.</p>
+                            </div>
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 animate-[pulse_4s_ease-in-out_infinite]" />
+                        </div>
+                        <div className="mt-6 space-y-4">
+                            {priorityData.map((item) => (
+                                <div key={item.label} className="space-y-2">
+                                    <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
+                                        <span>{item.label}</span>
+                                        <span className="font-semibold text-gray-900 dark:text-white">{item.value}</span>
+                                    </div>
+                                    <div className="h-3 rounded-full bg-gray-100 dark:bg-white/10 overflow-hidden">
+                                        <div
+                                            className={`h-full rounded-full bg-gradient-to-r ${item.color} transition-all duration-700 ease-out`}
+                                            style={{ width: `${chartReady ? (item.value / maxPriority) * 100 : 0}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="p-6 rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/80 dark:bg-gray-900/60 shadow-lg">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Status Flow</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">Snapshot of task progress states.</p>
+                            </div>
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-400 animate-[pulse_4s_ease-in-out_infinite]" />
+                        </div>
+                        <div className="mt-8 flex items-end gap-4 h-40">
+                            {statusData.map((item) => (
+                                <div key={item.label} className="flex-1 flex flex-col items-center gap-3">
+                                    <div className="w-full h-full flex items-end">
+                                        <div
+                                            className={`w-full rounded-2xl bg-gradient-to-t ${item.color} transition-all duration-700 ease-out`}
+                                            style={{ height: `${chartReady ? (item.value / maxStatus) * 100 : 0}%` }}
+                                        />
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-xs uppercase tracking-wide text-gray-400">{item.label}</p>
+                                        <p className="text-lg font-semibold text-gray-900 dark:text-white">{item.value}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 </section>
 
                 <div className="flex items-center justify-between flex-wrap gap-4 mb-8">
@@ -333,8 +435,8 @@ const Dashboard = ({ user, darkMode, setDarkMode, showNotification, onUserUpdate
                 ) : (
                     <div className="grid grid-cols-1 xl:grid-cols-[2fr,1fr] gap-8">
                         <CalendarView
-                            tasks={tasks}
-                            selectedDate={selectedDate}
+                            tasks={safeTasks}
+                            selectedDate={safeSelectedDate}
                             currentMonth={calendarMonth}
                             onMonthChange={setCalendarMonth}
                             onDateSelect={setSelectedDate}
@@ -343,7 +445,7 @@ const Dashboard = ({ user, darkMode, setDarkMode, showNotification, onUserUpdate
                             <div className="mb-4">
                                 <p className="text-sm text-gray-500 dark:text-gray-400">Tasks for</p>
                                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                                    {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                    {safeSelectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                                 </h3>
                             </div>
                             {loading ? (

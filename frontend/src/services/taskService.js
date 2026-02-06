@@ -44,4 +44,9 @@ export const taskService = {
         const response = await api.get(`/api/tasks/date/${date}`);
         return response.data;
     },
+
+    exportTasks: async () => {
+        const response = await api.get('/api/tasks/export', { responseType: 'blob' });
+        return response;
+    },
 };
